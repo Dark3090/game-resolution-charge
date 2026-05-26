@@ -618,5 +618,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ResChange-NewUI-${{ github.sha }}
-          path: app/src/main/res/apk/release/*.apk
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 30
