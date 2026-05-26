@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/settingsToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:titleTextColor="?android:attr/textColorPrimary"
+        app:popupTheme="@style/ThemeOverlay.MaterialComponents.Light" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Selecione como as intervenções do app são aplicadas.\nA alteração de modos exigirá a reaplicação de todos os apps."
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary"
+                android:paddingBottom="20dp" />
+
+            <!-- Default Mode -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <RadioGroup
+                        android:id="@+id/radioGroupMode"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/radioDefault"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Default Mode"
+                            android:textStyle="bold"
+                            android:textSize="16sp"
+                            android:paddingBottom="8dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="• Usa comandos cmd game downscale\n• Recomendado para a maioria dos usuários\n• Funciona de forma confiável a partir do Android 14\n• Mais estável e bem testado\n• Reaplicado automaticamente ao abrir o app"
+                            android:textSize="13sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:paddingStart="32dp"
+                            android:paddingBottom="16dp" />
+
+                        <!-- Alternative Mode -->
+                        <RadioButton
+                            android:id="@+id/radioAlternative"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Alternative Mode"
+                            android:textStyle="bold"
+                            android:textSize="16sp"
+                            android:paddingBottom="8dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="• Usa comandos device_config game_overlay\n• Desabilita sincronização GMS (resolve o bug de reativar)\n• Suporte experimental para Android 13+\n• Pode não funcionar em todas as ROMs\n• Reaplicado automaticamente ao abrir o app"
+                            android:textSize="13sp"
+                            android:textColor="?android:attr/textColorSecondary"
+                            android:paddingStart="32dp" />
+
+                    </RadioGroup>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

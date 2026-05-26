@@ -38,7 +38,7 @@ class AppListAdapter(
         holder.packageName.text = app.packageName
 
         // Show gear icon if app's scale is modified
-        val savedScale = ScalePrefs.getScale(holder.itemView.context, app.packageName)
+        val savedScale = ResChangePrefs.getScale(holder.itemView.context, app.packageName)
         holder.modifiedIcon.visibility = if (savedScale != 1.0f) View.VISIBLE else View.GONE
 
         holder.itemView.setOnClickListener { onClick(app) }

@@ -13,18 +13,10 @@
         android:theme="@style/Theme.YourAppName"
         tools:targetApi="31">
 
-        <meta-data
-            android:name="xposedmodule"
-            android:value="true" />
-        <meta-data
-            android:name="xposeddescription"
-            android:value="Removes the gamemode downscale restriction on some Android 15-16 devices" />
-        <meta-data
-            android:name="xposedscope"
-            android:resource="@array/module_scope" />
-        <meta-data
-            android:name="xposedminversion"
-            android:value="53" />
+        <meta-data android:name="xposedmodule"       android:value="true" />
+        <meta-data android:name="xposeddescription"  android:value="Per-app resolution scaling with Default and Alternative modes" />
+        <meta-data android:name="xposedscope"        android:resource="@array/module_scope" />
+        <meta-data android:name="xposedminversion"   android:value="53" />
 
         <activity
             android:name=".MainActivity"
@@ -33,10 +25,16 @@
             android:theme="@style/Theme.YourAppName">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="Settings"
+            android:theme="@style/Theme.YourAppName" />
+
     </application>
 
     <queries>

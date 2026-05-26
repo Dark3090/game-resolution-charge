@@ -6,6 +6,13 @@
         android:id="@+id/action_search"
         android:title="Search"
         android:icon="@drawable/ic_search"
-        app:actionViewClass="androidx.appcompat.widget.SearchView"
-        app:showAsAction="ifRoom|collapseActionView" />
+        app:showAsAction="ifRoom|collapseActionView"
+        app:actionViewClass="androidx.appcompat.widget.SearchView" />
+
+    <item
+        android:id="@+id/action_settings"
+        android:title="Operation Mode"
+        android:icon="@drawable/ic_gear"
+        app:showAsAction="ifRoom" />
+
 </menu>
