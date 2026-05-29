@@ -349,16 +349,23 @@ class MainActivity : AppCompatActivity() {
         val scaleStr = String.format(Locale.US, "%.2f", scale)
         val sb = StringBuilder()
         if (ModePrefs.isAlternative(this)) {
+            // device_config game_overlay: downscaleFactor=0.70 significa 70% da resolução nativa
             var overlay = "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
             if (flags.fps != "Padrão") overlay += ":mode=2,fps=${flags.fps}:mode=3,fps=${flags.fps}"
             if (flags.loadingBoost) overlay += ":mode=2,loadingBoost=1:mode=3,loadingBoost=1"
             if (flags.angle) overlay += ":mode=2,angle=1:mode=3,angle=1"
             sb.append("device_config put game_overlay $pkg \"$overlay\"")
         } else {
-            sb.append("cmd game downscale $scaleStr $pkg 2>/dev/null; ")
-            sb.append("cmd game set --downscale $scaleStr $pkg 2>/dev/null")
-            if (flags.fps != "Padrão") sb.append("; cmd game set --fps ${flags.fps} $pkg 2>/dev/null")
-            if (flags.loadingBoost) sb.append("; cmd game set --loading-boost 1 $pkg 2>/dev/null")
+            // cmd game downscale: aceita valor entre 0.0 e 1.0
+            // Tenta os dois formatos pois a sintaxe varia por versão do Android
+            sb.append("cmd game downscale $scaleStr $pkg 2>/dev/null")
+            sb.append(" || cmd game set --downscale $scaleStr $pkg 2>/dev/null")
+            if (flags.fps != "Padrão") {
+                sb.append("; cmd game set --fps ${flags.fps} $pkg 2>/dev/null")
+            }
+            if (flags.loadingBoost) {
+                sb.append("; cmd game set --loading-boost 1 $pkg 2>/dev/null")
+            }
         }
         return sb.toString()
     }
