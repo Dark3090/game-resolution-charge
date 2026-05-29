@@ -1386,6 +1386,8 @@ jobs:
                   </LinearLayout>
 
               </LinearLayout>
+
+              </LinearLayout>
               </androidx.core.widget.NestedScrollView>
 
               <!-- Botões fixos na parte inferior — sempre visíveis -->
