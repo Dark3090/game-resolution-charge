@@ -328,6 +328,20 @@ class MainActivity : AppCompatActivity() {
 
         view.findViewById<View>(R.id.btnCancel).setOnClickListener { sheet.dismiss() }
 
+        // Expande o sheet completamente para os botões ficarem visíveis
+        sheet.setOnShowListener {
+            val d = sheet.findViewById<android.view.View>(
+                com.google.android.material.R.id.design_bottom_sheet)
+            d?.let {
+                val behavior = com.google.android.material.bottomsheet.BottomSheetBehavior.from(it)
+                val metrics = resources.displayMetrics
+                behavior.peekHeight = (metrics.heightPixels * 0.6).toInt()
+                behavior.state = com.google.android.material.bottomsheet.BottomSheetBehavior.STATE_EXPANDED
+                it.layoutParams.height = (metrics.heightPixels * 0.92).toInt()
+                it.requestLayout()
+            }
+        }
+
         sheet.show()
     }
 
