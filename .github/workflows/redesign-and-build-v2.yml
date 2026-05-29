@@ -751,18 +751,18 @@ jobs:
                       .sortedBy { it.name.lowercase() }
               }
 
-              // ── Bottom Sheet de resolução (visual baseado no HTML) ──────────
+              // ── Bottom Sheet de resolução com flags de performance ──────────
               private fun showResolutionBottomSheet(packageName: String) {
                   val savedScale = ResChangePrefs.getScale(this, packageName)
                   val isAlt      = ModePrefs.isAlternative(this)
                   val modeLabel  = if (isAlt) "Alternative Mode" else "Default Mode"
                   val appName    = allApps.find { it.packageName == packageName }?.name ?: packageName
+                  val savedFlags = ResChangePrefs.getFlags(this, packageName)
 
                   val sheet = BottomSheetDialog(this, R.style.MyRoundedDialog)
                   val view  = layoutInflater.inflate(R.layout.sheet_resolution, null)
                   sheet.setContentView(view)
 
-                  // Preenche header
                   view.findViewById<TextView>(R.id.sheetAppName).text = appName
                   view.findViewById<TextView>(R.id.sheetAppPkg).text  = packageName
                   view.findViewById<TextView>(R.id.sheetModeLabel).text = modeLabel
@@ -770,86 +770,146 @@ jobs:
                   val scaleLabel = view.findViewById<TextView>(R.id.sheetScaleValue)
                   val slider     = view.findViewById<Slider>(R.id.sheetSlider)
 
-                  slider.valueFrom    = 0.30f
-                  slider.valueTo      = 1.00f
-                  slider.stepSize     = 0.05f
-                  slider.value        = savedScale
+                  slider.valueFrom     = 0.30f
+                  slider.valueTo       = 1.00f
+                  slider.stepSize      = 0.05f
+                  slider.value         = savedScale
                   slider.isTickVisible = true
-                  scaleLabel.text     = "${(savedScale * 100).toInt()}%"
+                  scaleLabel.text      = "${(savedScale * 100).toInt()}%"
 
                   slider.addOnChangeListener { _, value, _ ->
                       scaleLabel.text = "${(value * 100).toInt()}%"
-                      val color = if (value >= 1.0f) Color.parseColor("#FF939393")
-                                  else Color.parseColor("#FF00E5CC")
-                      scaleLabel.setTextColor(color)
+                      scaleLabel.setTextColor(
+                          if (value >= 1.0f) Color.parseColor("#FF939393")
+                          else Color.parseColor("#FF00E5CC")
+                      )
                   }
 
-                  // Preset chips
-                  val presets = listOf(50, 60, 70, 75, 80, 90)
+                  // Preset chips de resolução
                   val presetGroup = view.findViewById<ChipGroup>(R.id.sheetPresetChips)
-                  presets.forEach { pct ->
-                      val chip = Chip(this).apply {
-                          text = "$pct%"
-                          isCheckable = true
+                  listOf(50, 60, 70, 75, 80, 90).forEach { pct ->
+                      presetGroup.addView(Chip(this).apply {
+                          text = "$pct%"; isCheckable = true
                           isChecked = (savedScale * 100).toInt() == pct
                           setTextColor(Color.parseColor("#FF939393"))
                           chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
                           chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
                           chipStrokeWidth = 4f
-                          setOnClickListener {
-                              slider.value = pct / 100f
-                          }
-                      }
-                      presetGroup.addView(chip)
+                          setOnClickListener { slider.value = pct / 100f }
+                      })
                   }
 
-                  // Botões
+                  // ── FPS chips ──
+                  val chipsFps = view.findViewById<ChipGroup>(R.id.chipsFps)
+                  val fpsList  = listOf("Padrão", "60", "90", "120", "144")
+                  fpsList.forEach { fps ->
+                      chipsFps.addView(Chip(this).apply {
+                          text = if (fps == "Padrão") "Padrão" else "${fps} FPS"
+                          isCheckable = true
+                          isChecked = savedFlags.fps == fps
+                          setTextColor(Color.parseColor("#FF939393"))
+                          chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                          chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
+                          chipStrokeWidth = 4f
+                      })
+                  }
+
+                  // ── Performance mode chips ──
+                  val chipsPerfMode = view.findViewById<ChipGroup>(R.id.chipsPerfMode)
+                  val perfModes = listOf("Padrão" to "0", "Performance" to "2", "Bateria" to "1")
+                  perfModes.forEach { (label, value) ->
+                      chipsPerfMode.addView(Chip(this).apply {
+                          text = label; isCheckable = true
+                          isChecked = savedFlags.perfMode == value
+                          setTextColor(Color.parseColor("#FF939393"))
+                          chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                          chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
+                          chipStrokeWidth = 4f
+                      })
+                  }
+
+                  // ── Extras switches ──
+                  val switchBoost = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchLoadingBoost)
+                  val switchAngle = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchAngle)
+                  switchBoost.isChecked = savedFlags.loadingBoost
+                  switchAngle.isChecked = savedFlags.angle
+
+                  // ── Apply ──
                   view.findViewById<View>(R.id.btnApply).setOnClickListener {
                       var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
-                      if (scale == 0.95f) {
-                          scale = 0.9f
-                          Toast.makeText(this, "95% não suportado. Usando 90%.", Toast.LENGTH_SHORT).show()
-                      }
+                      if (scale == 0.95f) { scale = 0.9f
+                          Toast.makeText(this, "95% não suportado. Usando 90%.", Toast.LENGTH_SHORT).show() }
+
+                      // Lê seleções de FPS e modo
+                      val selFpsIdx  = chipsFps.checkedChipId
+                      val selFps     = if (selFpsIdx == -1) "Padrão"
+                                       else view.findViewById<Chip>(selFpsIdx).text.toString()
+                                           .replace(" FPS", "")
+                      val selModeIdx = chipsPerfMode.checkedChipId
+                      val selPerf    = if (selModeIdx == -1) "0"
+                                       else perfModes[chipsPerfMode.indexOfChild(
+                                           view.findViewById(selModeIdx))].second
+
+                      val flags = PerformanceFlags(
+                          fps = selFps,
+                          perfMode = selPerf,
+                          loadingBoost = switchBoost.isChecked,
+                          angle = switchAngle.isChecked
+                      )
+
+                      // Aplica resolução
                       if (scale >= 1.0f) {
                           runAsRoot(buildDisableCommand(packageName))
                           ResChangePrefs.removeScale(this, packageName)
-                          Toast.makeText(this, "Resolução resetada para $appName", Toast.LENGTH_SHORT).show()
                       } else {
-                          runAsRoot(buildApplyCommand(packageName, scale))
+                          runAsRoot(buildApplyCommand(packageName, scale, flags))
                           ResChangePrefs.saveScale(this, packageName, scale)
-                          Toast.makeText(this, "${(scale*100).toInt()}% aplicado para $appName", Toast.LENGTH_SHORT).show()
                       }
+                      ResChangePrefs.saveFlags(this, packageName, flags)
+
+                      // Aplica modo de performance via cmd game
+                      if (selPerf != "0") {
+                          runAsRoot("cmd game set --mode $selPerf $packageName 2>/dev/null")
+                      }
+
                       adapter.notifyDataSetChanged()
                       runAsRoot("am force-stop $packageName")
-                      Toast.makeText(this, "$appName parado. Reabra para aplicar.", Toast.LENGTH_LONG).show()
+                      Toast.makeText(this, "$appName configurado. Reabra para aplicar.", Toast.LENGTH_LONG).show()
                       sheet.dismiss()
                   }
 
                   view.findViewById<View>(R.id.btnReset).setOnClickListener {
                       runAsRoot(buildDisableCommand(packageName))
+                      runAsRoot("cmd game set --mode 0 $packageName 2>/dev/null")
                       ResChangePrefs.removeScale(this, packageName)
+                      ResChangePrefs.removeFlags(this, packageName)
                       adapter.notifyDataSetChanged()
                       runAsRoot("am force-stop $packageName")
-                      Toast.makeText(this, "$appName resetado para 100%.", Toast.LENGTH_LONG).show()
+                      Toast.makeText(this, "$appName resetado.", Toast.LENGTH_LONG).show()
                       sheet.dismiss()
                   }
 
-                  view.findViewById<View>(R.id.btnCancel).setOnClickListener {
-                      sheet.dismiss()
-                  }
+                  view.findViewById<View>(R.id.btnCancel).setOnClickListener { sheet.dismiss() }
 
                   sheet.show()
               }
 
-              private fun buildApplyCommand(pkg: String, scale: Float): String {
+              private fun buildApplyCommand(pkg: String, scale: Float, flags: PerformanceFlags = PerformanceFlags()): String {
                   val scaleStr = String.format(Locale.US, "%.2f", scale)
-                  return if (ModePrefs.isAlternative(this)) {
-                      "device_config put game_overlay $pkg " +
-                          "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
+                  val sb = StringBuilder()
+                  if (ModePrefs.isAlternative(this)) {
+                      var overlay = "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
+                      if (flags.fps != "Padrão") overlay += ":mode=2,fps=${flags.fps}:mode=3,fps=${flags.fps}"
+                      if (flags.loadingBoost) overlay += ":mode=2,loadingBoost=1:mode=3,loadingBoost=1"
+                      if (flags.angle) overlay += ":mode=2,angle=1:mode=3,angle=1"
+                      sb.append("device_config put game_overlay $pkg \"$overlay\"")
                   } else {
-                      "cmd game downscale $scaleStr $pkg 2>/dev/null; " +
-                          "cmd game set --downscale $scaleStr $pkg 2>/dev/null"
+                      sb.append("cmd game downscale $scaleStr $pkg 2>/dev/null; ")
+                      sb.append("cmd game set --downscale $scaleStr $pkg 2>/dev/null")
+                      if (flags.fps != "Padrão") sb.append("; cmd game set --fps ${flags.fps} $pkg 2>/dev/null")
+                      if (flags.loadingBoost) sb.append("; cmd game set --loading-boost 1 $pkg 2>/dev/null")
                   }
+                  return sb.toString()
               }
 
               private fun buildDisableCommand(pkg: String): String {
@@ -954,8 +1014,88 @@ jobs:
           EOF
 
       # ─────────────────────────────────────────
-      # LAYOUT — Bottom Sheet de resolução
+      # KOTLIN — PerformanceFlags data class
       # ─────────────────────────────────────────
+      - name: Create PerformanceFlags.kt
+        run: |
+          cat > app/src/main/java/com/game/reschange/PerformanceFlags.kt << 'EOF'
+          package com.game.reschange
+
+          data class PerformanceFlags(
+              val fps: String = "Padrão",
+              val perfMode: String = "0",
+              val loadingBoost: Boolean = false,
+              val angle: Boolean = false
+          )
+          EOF
+
+      # ─────────────────────────────────────────
+      # KOTLIN — ResChangePrefs com suporte a flags
+      # ─────────────────────────────────────────
+      - name: Rewrite ResChangePrefs.kt
+        run: |
+          # Verifica o nome real do arquivo de prefs
+          PREFS_FILE=$(find app/src/main/java -name "ResChangePrefs.kt" | head -1)
+          if [ -z "$PREFS_FILE" ]; then
+            PREFS_FILE="app/src/main/java/com/game/reschange/ResChangePrefs.kt"
+          fi
+          cat > "$PREFS_FILE" << 'EOF'
+          package com.game.reschange
+
+          import android.content.Context
+
+          object ResChangePrefs {
+              private const val PREFS_NAME = "reschange_scales"
+              private const val PREFS_FLAGS = "reschange_flags"
+
+              fun getScale(ctx: Context, pkg: String): Float =
+                  ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                      .getFloat(pkg, 1.0f)
+
+              fun saveScale(ctx: Context, pkg: String, scale: Float) =
+                  ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                      .edit().putFloat(pkg, scale).apply()
+
+              fun removeScale(ctx: Context, pkg: String) =
+                  ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                      .edit().remove(pkg).apply()
+
+              fun getAllPackages(ctx: Context): Set<String> =
+                  ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                      .all.keys.toSet()
+
+              fun clearAll(ctx: Context) =
+                  ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                      .edit().clear().apply()
+
+              // ── Flags de performance ──────────────────────────────────────
+              fun getFlags(ctx: Context, pkg: String): PerformanceFlags {
+                  val p = ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE)
+                  return PerformanceFlags(
+                      fps          = p.getString("${pkg}_fps", "Padrão") ?: "Padrão",
+                      perfMode     = p.getString("${pkg}_perfMode", "0") ?: "0",
+                      loadingBoost = p.getBoolean("${pkg}_loadingBoost", false),
+                      angle        = p.getBoolean("${pkg}_angle", false)
+                  )
+              }
+
+              fun saveFlags(ctx: Context, pkg: String, flags: PerformanceFlags) {
+                  ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE).edit()
+                      .putString("${pkg}_fps", flags.fps)
+                      .putString("${pkg}_perfMode", flags.perfMode)
+                      .putBoolean("${pkg}_loadingBoost", flags.loadingBoost)
+                      .putBoolean("${pkg}_angle", flags.angle)
+                      .apply()
+              }
+
+              fun removeFlags(ctx: Context, pkg: String) {
+                  ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE).edit()
+                      .remove("${pkg}_fps").remove("${pkg}_perfMode")
+                      .remove("${pkg}_loadingBoost").remove("${pkg}_angle")
+                      .apply()
+              }
+          }
+          EOF
       - name: Create sheet_resolution.xml
         run: |
           cat > app/src/main/res/layout/sheet_resolution.xml << 'EOF'
@@ -1131,8 +1271,108 @@ jobs:
                       android:id="@+id/sheetPresetChips"
                       android:layout_width="match_parent"
                       android:layout_height="wrap_content"
-                      android:layout_marginBottom="24dp"
+                      android:layout_marginBottom="20dp"
                       app:singleSelection="true" />
+
+                  <!-- Divider performance -->
+                  <View
+                      android:layout_width="match_parent"
+                      android:layout_height="1dp"
+                      android:background="@color/outline"
+                      android:layout_marginBottom="16dp" />
+
+                  <!-- FPS TARGET -->
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="FPS ALVO"
+                      android:textSize="12sp"
+                      android:textColor="@color/on_surface_variant"
+                      android:textStyle="bold"
+                      android:letterSpacing="0.05"
+                      android:layout_marginBottom="8dp" />
+
+                  <com.google.android.material.chip.ChipGroup
+                      android:id="@+id/chipsFps"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginBottom="16dp"
+                      app:singleSelection="true"
+                      app:selectionRequired="false" />
+
+                  <!-- PERFORMANCE MODE -->
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="MODO DE PERFORMANCE"
+                      android:textSize="12sp"
+                      android:textColor="@color/on_surface_variant"
+                      android:textStyle="bold"
+                      android:letterSpacing="0.05"
+                      android:layout_marginBottom="8dp" />
+
+                  <com.google.android.material.chip.ChipGroup
+                      android:id="@+id/chipsPerfMode"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:layout_marginBottom="16dp"
+                      app:singleSelection="true"
+                      app:selectionRequired="false" />
+
+                  <!-- EXTRAS -->
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="EXTRAS"
+                      android:textSize="12sp"
+                      android:textColor="@color/on_surface_variant"
+                      android:textStyle="bold"
+                      android:letterSpacing="0.05"
+                      android:layout_marginBottom="8dp" />
+
+                  <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:layout_marginBottom="20dp">
+
+                      <LinearLayout
+                          android:layout_width="match_parent"
+                          android:layout_height="48dp"
+                          android:orientation="horizontal"
+                          android:gravity="center_vertical">
+                          <TextView
+                              android:layout_width="0dp"
+                              android:layout_height="wrap_content"
+                              android:layout_weight="1"
+                              android:text="Loading Boost (CPU)"
+                              android:textSize="14sp"
+                              android:textColor="@color/on_surface" />
+                          <com.google.android.material.switchmaterial.SwitchMaterial
+                              android:id="@+id/switchLoadingBoost"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content" />
+                      </LinearLayout>
+
+                      <LinearLayout
+                          android:layout_width="match_parent"
+                          android:layout_height="48dp"
+                          android:orientation="horizontal"
+                          android:gravity="center_vertical">
+                          <TextView
+                              android:layout_width="0dp"
+                              android:layout_height="wrap_content"
+                              android:layout_weight="1"
+                              android:text="ANGLE (OpenGL via Vulkan)"
+                              android:textSize="14sp"
+                              android:textColor="@color/on_surface" />
+                          <com.google.android.material.switchmaterial.SwitchMaterial
+                              android:id="@+id/switchAngle"
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content" />
+                      </LinearLayout>
+
+                  </LinearLayout>
 
               </LinearLayout>
 
