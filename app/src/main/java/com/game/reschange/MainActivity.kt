@@ -3,24 +3,30 @@ package com.game.reschange
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.google.android.material.slider.Slider
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.slider.Slider
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.textfield.TextInputEditText
 import java.io.DataOutputStream
-import java.io.File
 import java.util.Locale
-import androidx.appcompat.widget.SearchView
-import androidx.core.view.WindowCompat
 
 class MainActivity : AppCompatActivity() {
 
@@ -43,9 +49,34 @@ class MainActivity : AppCompatActivity() {
 
         allApps = getUserInstalledApps()
         adapter = AppListAdapter(allApps) { appInfo ->
-            showResolutionDialog(appInfo.packageName)
+            showResolutionBottomSheet(appInfo.packageName)
         }
         recyclerView.adapter = adapter
+
+        // Busca inline via TextInputEditText
+        findViewById<TextInputEditText>(R.id.searchInput)
+            .addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+                override fun onTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {
+                    currentQuery = s?.toString().orEmpty()
+                    filterAppList()
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
+
+        // Chips de filtro
+        val chipGroup = findViewById<ChipGroup>(R.id.chipGroup)
+        chipGroup.setOnCheckedStateChangeListener { _, checkedIds ->
+            showOnlyModified = false
+            filterAppList()
+        }
+        // Chips individuais para controlar filtro
+        findViewById<Chip>(R.id.chipModified).setOnCheckedChangeListener { _, checked ->
+            if (checked) { showOnlyModified = true; filterAppList() }
+        }
+        findViewById<Chip>(R.id.chipAll).setOnCheckedChangeListener { _, checked ->
+            if (checked) { showOnlyModified = false; filterAppList() }
+        }
 
         toggleModified.setOnCheckedChangeListener { _, isChecked ->
             showOnlyModified = isChecked
@@ -62,20 +93,58 @@ class MainActivity : AppCompatActivity() {
             adapter.notifyDataSetChanged()
             Toast.makeText(this, "All resolutions reset to default", Toast.LENGTH_SHORT).show()
         }
+
+        updateStatusBanner()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateStatusBanner()
+    }
+
+    // Banner dinâmico: verifica se o módulo Xposed está ativo de verdade
+    private fun updateStatusBanner() {
+        val banner  = findViewById<MaterialCardView>(R.id.statusBanner)
+        val label   = findViewById<TextView>(R.id.statusLabel)
+        val sub     = findViewById<TextView>(R.id.statusSub)
+        val modeStr = if (ModePrefs.isAlternative(this)) "Modo Alternativo" else "Modo Padrão"
+
+        val hasRoot = isRootAvailable()
+
+        if (hasRoot) {
+            banner.setCardBackgroundColor(Color.parseColor("#FF003730"))
+            banner.strokeColor = Color.parseColor("#FF00B5A0")
+            label.text = "Root Disponível"
+            label.setTextColor(Color.parseColor("#FF6FF7E8"))
+        } else {
+            banner.setCardBackgroundColor(Color.parseColor("#FF3B0008"))
+            banner.strokeColor = Color.parseColor("#FFFF5449")
+            label.text = "Sem Root"
+            label.setTextColor(Color.parseColor("#FFFFB4AC"))
+        }
+        sub.text = if (hasRoot) "Root ativo · $modeStr" else "Root não encontrado"
+    }
+
+    private fun isRootAvailable(): Boolean {
+        // Método 1: tenta executar "id" via su e verifica se retorna uid=0
+        return try {
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val result = process.inputStream.bufferedReader().readLine() ?: ""
+            process.waitFor()
+            result.contains("uid=0")
+        } catch (_: Exception) {
+            // Método 2: verifica se o binário su existe nos caminhos comuns
+            listOf("/sbin/su", "/system/bin/su", "/system/xbin/su",
+                   "/data/local/xbin/su", "/data/local/bin/su",
+                   "/system/sd/xbin/su", "/su/bin/su")
+                .any { java.io.File(it).exists() }
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
-        val searchItem = menu.findItem(R.id.action_search)
-        val searchView = searchItem?.actionView as? SearchView
-        searchView?.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?) = true
-            override fun onQueryTextChange(newText: String?): Boolean {
-                currentQuery = newText.orEmpty()
-                filterAppList()
-                return true
-            }
-        })
+        // Remove item de busca do menu — busca agora é inline
+        menu.removeItem(R.id.action_search)
         return true
     }
 
@@ -100,7 +169,6 @@ class MainActivity : AppCompatActivity() {
         adapter.submitList(list)
     }
 
-    // Lista TODOS os apps instalados — nao so os com icone de launcher
     private fun getUserInstalledApps(): List<AppInfo> {
         val pm = packageManager
         return pm.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -120,99 +188,167 @@ class MainActivity : AppCompatActivity() {
             .sortedBy { it.name.lowercase() }
     }
 
-    private fun showResolutionDialog(packageName: String) {
+    // ── Bottom Sheet de resolução com flags de performance ──────────
+    private fun showResolutionBottomSheet(packageName: String) {
         val savedScale = ResChangePrefs.getScale(this, packageName)
         val isAlt      = ModePrefs.isAlternative(this)
-        val modeLabel  = if (isAlt) "Alternative" else "Default"
+        val modeLabel  = if (isAlt) "Alternative Mode" else "Default Mode"
+        val appName    = allApps.find { it.packageName == packageName }?.name ?: packageName
+        val savedFlags = ResChangePrefs.getFlags(this, packageName)
 
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(50, 40, 50, 10)
-        }
+        val sheet = BottomSheetDialog(this, R.style.MyRoundedDialog)
+        val view  = layoutInflater.inflate(R.layout.sheet_resolution, null)
+        sheet.setContentView(view)
 
-        val modeText = TextView(this).apply {
-            textSize = 12f
-            setPadding(0, 0, 0, 8)
-            text = "Mode: $modeLabel"
-            setTextColor(0xFF888888.toInt())
-        }
+        view.findViewById<TextView>(R.id.sheetAppName).text = appName
+        view.findViewById<TextView>(R.id.sheetAppPkg).text  = packageName
+        view.findViewById<TextView>(R.id.sheetModeLabel).text = modeLabel
 
-        val scaleText = TextView(this).apply {
-            textSize = 18f
-            setPadding(0, 0, 0, 20)
-            text = "Scale: ${(savedScale * 100).toInt()}%"
-        }
+        val scaleLabel = view.findViewById<TextView>(R.id.sheetScaleValue)
+        val slider     = view.findViewById<Slider>(R.id.sheetSlider)
 
-        val slider = Slider(this).apply {
-            valueFrom    = 0.3f
-            valueTo      = 1.0f
-            stepSize     = 0.05f
-            value        = savedScale
-            isTickVisible = true
-        }
+        slider.valueFrom     = 0.30f
+        slider.valueTo       = 1.00f
+        slider.stepSize      = 0.05f
+        slider.value         = savedScale
+        slider.isTickVisible = true
+        scaleLabel.text      = "${(savedScale * 100).toInt()}%"
 
         slider.addOnChangeListener { _, value, _ ->
-            scaleText.text = "Scale: ${(value * 100).toInt()}%"
+            scaleLabel.text = "${(value * 100).toInt()}%"
+            scaleLabel.setTextColor(
+                if (value >= 1.0f) Color.parseColor("#FF939393")
+                else Color.parseColor("#FF00E5CC")
+            )
         }
 
-        layout.addView(modeText)
-        layout.addView(scaleText)
-        layout.addView(slider)
+        // Preset chips de resolução
+        val presetGroup = view.findViewById<ChipGroup>(R.id.sheetPresetChips)
+        listOf(50, 60, 70, 75, 80, 90).forEach { pct ->
+            presetGroup.addView(Chip(this).apply {
+                text = "$pct%"; isCheckable = true
+                isChecked = (savedScale * 100).toInt() == pct
+                setTextColor(Color.parseColor("#FF939393"))
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
+                chipStrokeWidth = 4f
+                setOnClickListener { slider.value = pct / 100f }
+            })
+        }
 
-        MaterialAlertDialogBuilder(this, R.style.MyRoundedDialog)
-            .setTitle("Set Resolution Scale")
-            .setView(layout)
-            .setPositiveButton("Apply") { _, _ ->
-                var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
+        // ── FPS chips ──
+        val chipsFps = view.findViewById<ChipGroup>(R.id.chipsFps)
+        val fpsList  = listOf("Padrão", "60", "90", "120", "144")
+        fpsList.forEach { fps ->
+            chipsFps.addView(Chip(this).apply {
+                text = if (fps == "Padrão") "Padrão" else "${fps} FPS"
+                isCheckable = true
+                isChecked = savedFlags.fps == fps
+                setTextColor(Color.parseColor("#FF939393"))
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
+                chipStrokeWidth = 4f
+            })
+        }
 
-                if (scale == 0.95f) {
-                    scale = 0.9f
-                    Toast.makeText(this, "95% not supported. Using 90%.", Toast.LENGTH_SHORT).show()
-                }
+        // ── Performance mode chips ──
+        val chipsPerfMode = view.findViewById<ChipGroup>(R.id.chipsPerfMode)
+        val perfModes = listOf("Padrão" to "0", "Performance" to "2", "Bateria" to "1")
+        perfModes.forEach { (label, value) ->
+            chipsPerfMode.addView(Chip(this).apply {
+                text = label; isCheckable = true
+                isChecked = savedFlags.perfMode == value
+                setTextColor(Color.parseColor("#FF939393"))
+                chipBackgroundColor = android.content.res.ColorStateList.valueOf(Color.TRANSPARENT)
+                chipStrokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF303030"))
+                chipStrokeWidth = 4f
+            })
+        }
 
-                val appName = allApps.find { it.packageName == packageName }?.name ?: packageName
+        // ── Extras switches ──
+        val switchBoost = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchLoadingBoost)
+        val switchAngle = view.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchAngle)
+        switchBoost.isChecked = savedFlags.loadingBoost
+        switchAngle.isChecked = savedFlags.angle
 
-                if (scale >= 1.0f) {
-                    runAsRoot(buildDisableCommand(packageName))
-                    ResChangePrefs.removeScale(this, packageName)
-                    Toast.makeText(this, "Resolution reset to 100% for $appName", Toast.LENGTH_SHORT).show()
-                } else {
-                    runAsRoot(buildApplyCommand(packageName, scale))
-                    ResChangePrefs.saveScale(this, packageName, scale)
-                    Toast.makeText(this,
-                        "${(scale * 100).toInt()}% applied for $appName [$modeLabel Mode]",
-                        Toast.LENGTH_SHORT).show()
-                }
+        // ── Apply ──
+        view.findViewById<View>(R.id.btnApply).setOnClickListener {
+            var scale = String.format(Locale.US, "%.2f", slider.value).toFloat()
+            if (scale == 0.95f) { scale = 0.9f
+                Toast.makeText(this, "95% não suportado. Usando 90%.", Toast.LENGTH_SHORT).show() }
 
-                adapter.notifyDataSetChanged()
-                runAsRoot("am force-stop $packageName")
-                Toast.makeText(this, "$appName stopped. Relaunch to apply.", Toast.LENGTH_LONG).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .setNeutralButton("Reset") { _, _ ->
+            // Lê seleções de FPS e modo
+            val selFpsIdx  = chipsFps.checkedChipId
+            val selFps     = if (selFpsIdx == -1) "Padrão"
+                             else view.findViewById<Chip>(selFpsIdx).text.toString()
+                                 .replace(" FPS", "")
+            val selModeIdx = chipsPerfMode.checkedChipId
+            val selPerf    = if (selModeIdx == -1) "0"
+                             else perfModes[chipsPerfMode.indexOfChild(
+                                 view.findViewById(selModeIdx))].second
+
+            val flags = PerformanceFlags(
+                fps = selFps,
+                perfMode = selPerf,
+                loadingBoost = switchBoost.isChecked,
+                angle = switchAngle.isChecked
+            )
+
+            // Aplica resolução
+            if (scale >= 1.0f) {
                 runAsRoot(buildDisableCommand(packageName))
                 ResChangePrefs.removeScale(this, packageName)
-                adapter.notifyDataSetChanged()
-                runAsRoot("am force-stop $packageName")
-                val appName = allApps.find { it.packageName == packageName }?.name ?: packageName
-                Toast.makeText(this, "$appName reset to 100%. Relaunch to apply.", Toast.LENGTH_LONG).show()
+            } else {
+                runAsRoot(buildApplyCommand(packageName, scale, flags))
+                ResChangePrefs.saveScale(this, packageName, scale)
             }
-            .show()
-    }
+            ResChangePrefs.saveFlags(this, packageName, flags)
 
-    // Monta o comando de aplicar conforme o modo ativo
-    private fun buildApplyCommand(pkg: String, scale: Float): String {
-        val scaleStr = String.format(Locale.US, "%.2f", scale)
-        return if (ModePrefs.isAlternative(this)) {
-            "device_config put game_overlay $pkg " +
-                "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
-        } else {
-            "cmd game downscale $scaleStr $pkg 2>/dev/null; " +
-                "cmd game set --downscale $scaleStr $pkg 2>/dev/null"
+            // Aplica modo de performance via cmd game
+            if (selPerf != "0") {
+                runAsRoot("cmd game set --mode $selPerf $packageName 2>/dev/null")
+            }
+
+            adapter.notifyDataSetChanged()
+            runAsRoot("am force-stop $packageName")
+            Toast.makeText(this, "$appName configurado. Reabra para aplicar.", Toast.LENGTH_LONG).show()
+            sheet.dismiss()
         }
+
+        view.findViewById<View>(R.id.btnReset).setOnClickListener {
+            runAsRoot(buildDisableCommand(packageName))
+            runAsRoot("cmd game set --mode 0 $packageName 2>/dev/null")
+            ResChangePrefs.removeScale(this, packageName)
+            ResChangePrefs.removeFlags(this, packageName)
+            adapter.notifyDataSetChanged()
+            runAsRoot("am force-stop $packageName")
+            Toast.makeText(this, "$appName resetado.", Toast.LENGTH_LONG).show()
+            sheet.dismiss()
+        }
+
+        view.findViewById<View>(R.id.btnCancel).setOnClickListener { sheet.dismiss() }
+
+        sheet.show()
     }
 
-    // Monta o comando de desabilitar conforme o modo ativo
+    private fun buildApplyCommand(pkg: String, scale: Float, flags: PerformanceFlags = PerformanceFlags()): String {
+        val scaleStr = String.format(Locale.US, "%.2f", scale)
+        val sb = StringBuilder()
+        if (ModePrefs.isAlternative(this)) {
+            var overlay = "mode=2,downscaleFactor=$scaleStr:mode=3,downscaleFactor=$scaleStr"
+            if (flags.fps != "Padrão") overlay += ":mode=2,fps=${flags.fps}:mode=3,fps=${flags.fps}"
+            if (flags.loadingBoost) overlay += ":mode=2,loadingBoost=1:mode=3,loadingBoost=1"
+            if (flags.angle) overlay += ":mode=2,angle=1:mode=3,angle=1"
+            sb.append("device_config put game_overlay $pkg \"$overlay\"")
+        } else {
+            sb.append("cmd game downscale $scaleStr $pkg 2>/dev/null; ")
+            sb.append("cmd game set --downscale $scaleStr $pkg 2>/dev/null")
+            if (flags.fps != "Padrão") sb.append("; cmd game set --fps ${flags.fps} $pkg 2>/dev/null")
+            if (flags.loadingBoost) sb.append("; cmd game set --loading-boost 1 $pkg 2>/dev/null")
+        }
+        return sb.toString()
+    }
+
     private fun buildDisableCommand(pkg: String): String {
         return if (ModePrefs.isAlternative(this)) {
             "device_config delete game_overlay $pkg"

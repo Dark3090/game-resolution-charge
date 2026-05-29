@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="bg_amoled">#FF000000</color>
+    <color name="surface_1">#FF0D0D0D</color>
+    <color name="surface_2">#FF141414</color>
+    <color name="surface_3">#FF1A1A1A</color>
+    <color name="surface_4">#FF212121</color>
+    <color name="primary">#FF00E5CC</color>
+    <color name="primary_dim">#FF00B5A0</color>
+    <color name="primary_container">#FF003730</color>
+    <color name="on_primary">#FF000000</color>
+    <color name="on_primary_container">#FF6FF7E8</color>
+    <color name="secondary">#FFFFB74D</color>
+    <color name="secondary_container">#FF3D2800</color>
+    <color name="on_secondary_container">#FFFFD9A3</color>
+    <color name="error">#FFFF5449</color>
+    <color name="error_container">#FF3B0008</color>
+    <color name="on_error_container">#FFFFB4AC</color>
+    <color name="on_surface">#FFE8E8E8</color>
+    <color name="on_surface_variant">#FF939393</color>
+    <color name="outline">#FF303030</color>
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -8,6 +27,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="reset_button_text">#000000</color>
-    <color name="button_dark_blue">#0D47A1</color>
+    <color name="reset_button_text">#FF000000</color>
+    <color name="button_dark_blue">#FF0D47A1</color>
 </resources>

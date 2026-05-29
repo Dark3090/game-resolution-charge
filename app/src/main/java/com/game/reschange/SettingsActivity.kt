@@ -1,14 +1,19 @@
 package com.game.reschange
 
+import android.graphics.Color
 import android.os.Bundle
 import android.widget.RadioButton
-import android.widget.RadioGroup
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
+import com.google.android.material.card.MaterialCardView
 
 class SettingsActivity : AppCompatActivity() {
+
+    private lateinit var cardDefault: MaterialCardView
+    private lateinit var cardAlternative: MaterialCardView
+    private lateinit var radioDefault: RadioButton
+    private lateinit var radioAlternative: RadioButton
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -18,73 +23,57 @@ class SettingsActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.title = "Operation Mode"
 
-        val radioGroup    = findViewById<RadioGroup>(R.id.radioGroupMode)
-        val radioDefault  = findViewById<RadioButton>(R.id.radioDefault)
-        val radioAlt      = findViewById<RadioButton>(R.id.radioAlternative)
+        cardDefault      = findViewById(R.id.cardDefault)
+        cardAlternative  = findViewById(R.id.cardAlternative)
+        radioDefault     = findViewById(R.id.radioDefault)
+        radioAlternative = findViewById(R.id.radioAlternative)
 
-        // Marca o modo atual
-        val currentMode = ModePrefs.getMode(this)
-        if (currentMode == ModePrefs.MODE_ALTERNATIVE) {
-            radioAlt.isChecked = true
+        applySelection(ModePrefs.getMode(this))
+
+        cardDefault.setOnClickListener     { selectMode(ModePrefs.MODE_DEFAULT) }
+        cardAlternative.setOnClickListener { selectMode(ModePrefs.MODE_ALTERNATIVE) }
+        radioDefault.setOnClickListener    { selectMode(ModePrefs.MODE_DEFAULT) }
+        radioAlternative.setOnClickListener{ selectMode(ModePrefs.MODE_ALTERNATIVE) }
+    }
+
+    private fun selectMode(mode: String) {
+        ModePrefs.saveMode(this, mode)
+        writeModeFile(mode)
+        applySelection(mode)
+        if (mode == ModePrefs.MODE_ALTERNATIVE) {
+            runAsRoot("device_config set_sync_disabled_for_tests persistent")
+            Toast.makeText(this, "Alternative Mode enabled.\nGMS sync disabled.", Toast.LENGTH_LONG).show()
         } else {
-            radioDefault.isChecked = true
+            runAsRoot("device_config set_sync_disabled_for_tests none")
+            Toast.makeText(this, "Default Mode enabled.", Toast.LENGTH_SHORT).show()
         }
+    }
 
-        radioGroup.setOnCheckedChangeListener { _, checkedId ->
-            val newMode = when (checkedId) {
-                R.id.radioAlternative -> ModePrefs.MODE_ALTERNATIVE
-                else                  -> ModePrefs.MODE_DEFAULT
-            }
-
-            ModePrefs.saveMode(this, newMode)
-
-            // Salva o modo em arquivo world-readable para o XposedInit ler
-            writeModeFile(newMode)
-
-            if (newMode == ModePrefs.MODE_ALTERNATIVE) {
-                // Desabilita a sincronizacao do GMS para o namespace game_overlay
-                // Isso resolve o problema de "depois de um tempo tem que reativar tudo"
-                // O GMS sobrescreve device_config periodicamente — isso impede isso
-                runAsRoot("device_config set_sync_disabled_for_tests persistent")
-                Toast.makeText(this,
-                    "Alternative Mode enabled.\nGMS sync disabled for game_overlay.",
-                    Toast.LENGTH_LONG).show()
-            } else {
-                // Reabilita sincronizacao ao voltar pro Default Mode
-                runAsRoot("device_config set_sync_disabled_for_tests none")
-                Toast.makeText(this,
-                    "Default Mode enabled.",
-                    Toast.LENGTH_SHORT).show()
-            }
-        }
+    private fun applySelection(mode: String) {
+        val isAlt = mode == ModePrefs.MODE_ALTERNATIVE
+        radioDefault.isChecked     = !isAlt
+        radioAlternative.isChecked = isAlt
+        cardDefault.setCardBackgroundColor(Color.parseColor(if (!isAlt) "#FF003730" else "#FF141414"))
+        cardDefault.strokeColor = Color.parseColor(if (!isAlt) "#FF00E5CC" else "#FF303030")
+        cardDefault.strokeWidth = if (!isAlt) 4 else 3
+        cardAlternative.setCardBackgroundColor(Color.parseColor(if (isAlt) "#FF003730" else "#FF141414"))
+        cardAlternative.strokeColor = Color.parseColor(if (isAlt) "#FF00E5CC" else "#FF303030")
+        cardAlternative.strokeWidth = if (isAlt) 4 else 3
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        onBackPressedDispatcher.onBackPressed()
-        return true
+        onBackPressedDispatcher.onBackPressed(); return true
     }
 
-    /**
-     * Grava /data/local/tmp/reschange_mode.txt com chmod 644
-     * para o XposedInit ler de qualquer processo.
-     */
     private fun writeModeFile(mode: String) {
-        try {
-            val file = java.io.File("/data/local/tmp/reschange_mode.txt")
-            file.writeText(mode)
-            runAsRoot("chmod 644 /data/local/tmp/reschange_mode.txt")
-        } catch (_: Exception) {}
+        try { val f = java.io.File("/data/local/tmp/reschange_mode.txt"); f.writeText(mode)
+            runAsRoot("chmod 644 /data/local/tmp/reschange_mode.txt") } catch (_: Exception) {}
     }
 
     private fun runAsRoot(command: String) {
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = java.io.DataOutputStream(process.outputStream)
-            os.writeBytes("$command\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            os.close()
-            process.waitFor()
+        try { val p = Runtime.getRuntime().exec("su")
+            val os = java.io.DataOutputStream(p.outputStream)
+            os.writeBytes("$command\n"); os.writeBytes("exit\n"); os.flush(); os.close(); p.waitFor()
         } catch (_: Exception) {}
     }
 }

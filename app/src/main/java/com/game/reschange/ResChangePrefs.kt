@@ -1,65 +1,55 @@
 package com.game.reschange
 
 import android.content.Context
-import androidx.core.content.edit
-import java.io.File
 
-/**
- * Gerencia as preferencias de escala por app.
- * Alem do SharedPreferences (para a UI), grava um arquivo
- * world-readable em /data/local/tmp/reschange_config.txt
- * para o XposedInit ler de qualquer processo sem SELinux block.
- *
- * Formato do arquivo: uma linha por app
- *   com.exemplo.app=0.80
- */
 object ResChangePrefs {
-    private const val PREF_NAME   = "scale_prefs"
-    const val CONFIG_FILE         = "/data/local/tmp/reschange_config.txt"
+    private const val PREFS_NAME = "reschange_scales"
+    private const val PREFS_FLAGS = "reschange_flags"
 
-    fun saveScale(context: Context, packageName: String, scale: Float) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit { putFloat(packageName, scale) }
-        writeConfigFile(context)
+    fun getScale(ctx: Context, pkg: String): Float =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getFloat(pkg, 1.0f)
+
+    fun saveScale(ctx: Context, pkg: String, scale: Float) =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putFloat(pkg, scale).apply()
+
+    fun removeScale(ctx: Context, pkg: String) =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().remove(pkg).apply()
+
+    fun getAllPackages(ctx: Context): Set<String> =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .all.keys.toSet()
+
+    fun clearAll(ctx: Context) =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().clear().apply()
+
+    // ── Flags de performance ──────────────────────────────────────
+    fun getFlags(ctx: Context, pkg: String): PerformanceFlags {
+        val p = ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE)
+        return PerformanceFlags(
+            fps          = p.getString("${pkg}_fps", "Padrão") ?: "Padrão",
+            perfMode     = p.getString("${pkg}_perfMode", "0") ?: "0",
+            loadingBoost = p.getBoolean("${pkg}_loadingBoost", false),
+            angle        = p.getBoolean("${pkg}_angle", false)
+        )
     }
 
-    fun getScale(context: Context, packageName: String): Float {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .getFloat(packageName, 1.0f)
+    fun saveFlags(ctx: Context, pkg: String, flags: PerformanceFlags) {
+        ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE).edit()
+            .putString("${pkg}_fps", flags.fps)
+            .putString("${pkg}_perfMode", flags.perfMode)
+            .putBoolean("${pkg}_loadingBoost", flags.loadingBoost)
+            .putBoolean("${pkg}_angle", flags.angle)
+            .apply()
     }
 
-    fun getAllPackages(context: Context): Set<String> {
-        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE).all.keys
-    }
-
-    fun removeScale(context: Context, packageName: String) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit { remove(packageName) }
-        writeConfigFile(context)
-    }
-
-    fun clearAll(context: Context) {
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            .edit { clear() }
-        writeConfigFile(context)
-    }
-
-    /**
-     * Grava /data/local/tmp/reschange_config.txt com chmod 644.
-     * Legivel por qualquer processo (incluindo system_server)
-     * sem depender de createPackageContext (bloqueado pelo SELinux 12+).
-     */
-    private fun writeConfigFile(context: Context) {
-        try {
-            val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-            val lines = prefs.all
-                .filterValues { it is Float && (it as Float) < 1.0f }
-                .map { (pkg, scale) -> "$pkg=$scale" }
-                .joinToString("\n")
-            File(CONFIG_FILE).writeText(lines)
-            Runtime.getRuntime()
-                .exec(arrayOf("su", "-c", "chmod 644 $CONFIG_FILE"))
-                .waitFor()
-        } catch (_: Exception) {}
+    fun removeFlags(ctx: Context, pkg: String) {
+        ctx.getSharedPreferences(PREFS_FLAGS, Context.MODE_PRIVATE).edit()
+            .remove("${pkg}_fps").remove("${pkg}_perfMode")
+            .remove("${pkg}_loadingBoost").remove("${pkg}_angle")
+            .apply()
     }
 }
